@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Цены на фрукты</title>
+<title>Цены на фрукты и овощи Айбека</title>
 <style>
   :root{
     --bg:#faf7f2;
@@ -143,13 +143,20 @@
 <div class="wrap">
   <header>
     <div>
-      <h1>🍎 Цены на фрукты</h1>
-      <div class="subtitle" id="updated-sub">Загрузка...</div>
+      <h1>🍎 Цены на фрукты и овощи Айбека</h1>
     </div>
     <button class="admin-btn" id="admin-toggle">Вход для администратора</button>
   </header>
 
   <div id="content" class="loading">Загрузка цен...</div>
+
+  <div id="footer-edit" style="display:none; margin-top:18px;">
+    <div style="background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px;">
+      <div style="font-size:12px; color:var(--muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.4px;">Текст внизу страницы</div>
+      <input type="text" id="footer-text-input" class="cell-input" placeholder="Например: Звоните для оптовых заказов" style="margin-bottom:8px;">
+      <input type="date" id="footer-date-input" class="cell-input">
+    </div>
+  </div>
 
   <div class="toolbar" id="admin-toolbar" style="display:none;">
     <button class="btn btn-secondary" id="add-row-btn">+ Добавить фрукт</button>
@@ -157,11 +164,11 @@
   </div>
   <div class="status" id="status"></div>
 
-  <footer>Цены обновляются администратором вручную</footer>
+  <footer id="site-footer">Цены обновляются администратором вручную</footer>
 </div>
 
 <script>
-const ADMIN_PASSWORD = "admin123"; // смените пароль здесь на свой
+const ADMIN_PASSWORD = "Aibekfrukty1989"; // смените пароль здесь на свой
 
 // ВСТАВЬТЕ СЮДА ССЫЛКУ НА ВАШУ FIREBASE БАЗУ ДАННЫХ
 // Пример: "https://fruit-prices-12345-default-rtdb.firebaseio.com"
@@ -170,12 +177,17 @@ const FIREBASE_URL = "https://fruit-prices-46b81-default-rtdb.asia-southeast1.fi
 let fruits = [];
 let isAdmin = false;
 let lastUpdated = null;
+let footerText = 'Цены актуальны на';
+let footerDate = '';
 
 const contentEl = document.getElementById('content');
 const statusEl = document.getElementById('status');
 const adminToggleBtn = document.getElementById('admin-toggle');
 const adminToolbar = document.getElementById('admin-toolbar');
-const updatedSub = document.getElementById('updated-sub');
+const footerEditBlock = document.getElementById('footer-edit');
+const footerTextInput = document.getElementById('footer-text-input');
+const footerDateInput = document.getElementById('footer-date-input');
+const siteFooter = document.getElementById('site-footer');
 
 const defaultFruits = [
   { id: 'f1', name: 'Яблоки', kg: '450', boxKg: '10', box: '4500' },
@@ -206,6 +218,8 @@ async function loadFruits() {
     if (data && data.fruits) {
       fruits = data.fruits;
       lastUpdated = data.updatedAt || null;
+      footerText = data.footerText || footerText;
+      footerDate = data.footerDate || '';
     } else {
       // базы ещё нет — создаём стартовые данные
       fruits = defaultFruits;
@@ -213,7 +227,7 @@ async function loadFruits() {
       await fetch(FIREBASE_URL + '/prices.json', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fruits, updatedAt: lastUpdated })
+        body: JSON.stringify({ fruits, updatedAt: lastUpdated, footerText, footerDate })
       });
     }
   } catch (e) {
@@ -231,11 +245,10 @@ async function saveFruits() {
     const res = await fetch(FIREBASE_URL + '/prices.json', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fruits, updatedAt: lastUpdated })
+      body: JSON.stringify({ fruits, updatedAt: lastUpdated, footerText, footerDate })
     });
     if (res.ok) {
       setStatus('Сохранено ✓', 'success');
-      updatedSub.textContent = 'Обновлено: ' + fmtDate(lastUpdated);
     } else {
       setStatus('Ошибка сохранения', 'error');
     }
@@ -245,15 +258,27 @@ async function saveFruits() {
   }
 }
 
+function fmtFooterDate(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-');
+  if (!y || !m || !d) return dateStr;
+  return `${d}.${m}.${y}`;
+}
+
+function renderFooter() {
+  const dateStr = fmtFooterDate(footerDate);
+  siteFooter.textContent = footerText + (dateStr ? ' ' + dateStr : '');
+}
+
 function render() {
-  updatedSub.textContent = lastUpdated ? 'Обновлено: ' + fmtDate(lastUpdated) : '';
+  renderFooter();
 
   if (fruits.length === 0 && !isAdmin) {
     contentEl.innerHTML = '<div class="empty">Пока нет фруктов в списке</div>';
     return;
   }
 
-  let html = '<table><thead><tr><th>Фрукт</th><th>Цена / кг</th><th>Кг в коробке</th><th>Цена / коробка</th>';
+  let html = '<table><thead><tr><th>Фрукт</th><th>Цена за кг</th><th>Цена за коробку</th><th>КГ в коробке</th>';
   if (isAdmin) html += '<th></th>';
   html += '</tr></thead><tbody>';
 
@@ -262,16 +287,16 @@ function render() {
       html += `<tr>
         <td><input class="cell-input" data-idx="${i}" data-field="name" value="${escapeHtml(f.name)}"></td>
         <td><input class="cell-input" data-idx="${i}" data-field="kg" value="${escapeHtml(f.kg)}" inputmode="decimal"></td>
-        <td><input class="cell-input" data-idx="${i}" data-field="boxKg" value="${escapeHtml(f.boxKg || '')}" inputmode="decimal"></td>
         <td><input class="cell-input" data-idx="${i}" data-field="box" value="${escapeHtml(f.box)}" inputmode="decimal"></td>
+        <td><input class="cell-input" data-idx="${i}" data-field="boxKg" value="${escapeHtml(f.boxKg || '')}" inputmode="decimal"></td>
         <td><button class="del-btn" data-idx="${i}" title="Удалить">✕</button></td>
       </tr>`;
     } else {
       html += `<tr>
         <td class="name-cell">${escapeHtml(f.name)}</td>
         <td class="price">${escapeHtml(f.kg)} ₸</td>
-        <td>${escapeHtml(f.boxKg || '—')} кг</td>
         <td class="price">${escapeHtml(f.box)} ₸</td>
+        <td>${escapeHtml(f.boxKg || '—')} кг</td>
       </tr>`;
     }
   });
@@ -309,6 +334,7 @@ adminToggleBtn.addEventListener('click', () => {
     adminToggleBtn.textContent = 'Вход для администратора';
     adminToggleBtn.classList.remove('active');
     adminToolbar.style.display = 'none';
+    footerEditBlock.style.display = 'none';
     setStatus('');
     render();
   } else {
@@ -318,6 +344,9 @@ adminToggleBtn.addEventListener('click', () => {
       adminToggleBtn.textContent = 'Выйти из режима админа';
       adminToggleBtn.classList.add('active');
       adminToolbar.style.display = 'flex';
+      footerEditBlock.style.display = 'block';
+      footerTextInput.value = footerText;
+      footerDateInput.value = footerDate;
       render();
     } else if (pass !== null) {
       alert('Неверный пароль');
@@ -331,6 +360,15 @@ document.getElementById('add-row-btn').addEventListener('click', () => {
 });
 
 document.getElementById('save-btn').addEventListener('click', saveFruits);
+
+footerTextInput.addEventListener('input', (e) => {
+  footerText = e.target.value;
+  renderFooter();
+});
+footerDateInput.addEventListener('input', (e) => {
+  footerDate = e.target.value;
+  renderFooter();
+});
 
 loadFruits();
 </script>
