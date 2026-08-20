@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Цены на фрукты</title>
+<style>
+  :root{
+    --bg:#faf7f2;
+    --card:#ffffff;
+    --accent:#e8734a;
+    --accent-dark:#c85a34;
+    --text:#2b2b2b;
+    --muted:#8a8a8a;
+    --border:#ece5db;
+    --green:#3e8a5c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    padding:24px 16px 60px;
+  }
+  .wrap{max-width:640px;margin:0 auto;}
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:20px;
+    gap:12px;
+  }
+  h1{
+    font-size:24px;
+    margin:0;
+    letter-spacing:-0.3px;
+  }
+  .subtitle{color:var(--muted);font-size:13px;margin-top:4px;}
+  .admin-btn{
+    background:var(--card);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:8px 14px;
+    border-radius:10px;
+    font-size:13px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .admin-btn:hover{border-color:var(--accent);}
+  .admin-btn.active{
+    background:var(--accent);
+    color:#fff;
+    border-color:var(--accent);
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    background:var(--card);
+    border-radius:14px;
+    overflow:hidden;
+    box-shadow:0 1px 3px rgba(0,0,0,0.04);
+  }
+  th,td{
+    padding:14px 12px;
+    text-align:left;
+    border-bottom:1px solid var(--border);
+    font-size:15px;
+  }
+  th{
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    color:var(--muted);
+    font-weight:600;
+    background:#fbf9f5;
+  }
+  tr:last-child td{border-bottom:none;}
+  .price{font-weight:600;color:var(--green);}
+  .name-cell{font-weight:500;}
+  input.cell-input{
+    width:100%;
+    padding:8px 10px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    font-size:14px;
+    font-family:inherit;
+  }
+  input.cell-input:focus{outline:none;border-color:var(--accent);}
+  .del-btn{
+    background:none;
+    border:none;
+    color:#c0392b;
+    cursor:pointer;
+    font-size:18px;
+    padding:4px 8px;
+  }
+  .toolbar{
+    display:flex;
+    gap:10px;
+    margin-top:16px;
+    flex-wrap:wrap;
+  }
+  .btn{
+    padding:10px 16px;
+    border-radius:10px;
+    border:none;
+    font-size:14px;
+    cursor:pointer;
+    font-weight:500;
+  }
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent-dark);}
+  .btn-secondary{background:var(--card);color:var(--text);border:1px solid var(--border);}
+  .btn-secondary:hover{border-color:var(--accent);}
+  .status{
+    font-size:13px;
+    color:var(--muted);
+    margin-top:10px;
+    min-height:16px;
+  }
+  .status.success{color:var(--green);}
+  .status.error{color:#c0392b;}
+  .empty{
+    text-align:center;
+    color:var(--muted);
+    padding:40px 0;
+  }
+  .loading{
+    text-align:center;
+    color:var(--muted);
+    padding:40px 0;
+  }
+  footer{
+    text-align:center;
+    color:var(--muted);
+    font-size:12px;
+    margin-top:24px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>🍎 Цены на фрукты</h1>
+      <div class="subtitle" id="updated-sub">Загрузка...</div>
+    </div>
+    <button class="admin-btn" id="admin-toggle">Вход для администратора</button>
+  </header>
+
+  <div id="content" class="loading">Загрузка цен...</div>
+
+  <div class="toolbar" id="admin-toolbar" style="display:none;">
+    <button class="btn btn-secondary" id="add-row-btn">+ Добавить фрукт</button>
+    <button class="btn btn-primary" id="save-btn">Сохранить изменения</button>
+  </div>
+  <div class="status" id="status"></div>
+
+  <footer>Цены обновляются администратором вручную</footer>
+</div>
+
+<script>
+const ADMIN_PASSWORD = "admin123"; // смените пароль здесь на свой
+
+// ВСТАВЬТЕ СЮДА ССЫЛКУ НА ВАШУ FIREBASE БАЗУ ДАННЫХ
+// Пример: "https://fruit-prices-12345-default-rtdb.firebaseio.com"
+const FIREBASE_URL = "https://console.firebase.google.com/u/0/project/fruit-prices-46b81/database/fruit-prices-46b81-default-rtdb/data/~2F";
+
+let fruits = [];
+let isAdmin = false;
+let lastUpdated = null;
+
+const contentEl = document.getElementById('content');
+const statusEl = document.getElementById('status');
+const adminToggleBtn = document.getElementById('admin-toggle');
+const adminToolbar = document.getElementById('admin-toolbar');
+const updatedSub = document.getElementById('updated-sub');
+
+const defaultFruits = [
+  { id: 'f1', name: 'Яблоки', kg: '450', boxKg: '10', box: '4500' },
+  { id: 'f2', name: 'Бананы', kg: '550', boxKg: '18', box: '9900' },
+  { id: 'f3', name: 'Апельсины', kg: '500', boxKg: '15', box: '7500' },
+  { id: 'f4', name: 'Груши', kg: '600', boxKg: '10', box: '6000' },
+];
+
+function setStatus(msg, type) {
+  statusEl.textContent = msg || '';
+  statusEl.className = 'status' + (type ? ' ' + type : '');
+}
+
+function fmtDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+async function loadFruits() {
+  if (!FIREBASE_URL || FIREBASE_URL.includes('ВСТАВЬТЕ')) {
+    contentEl.innerHTML = '<div class="empty">⚠️ Не настроена база данных.<br>Вставьте адрес Firebase в код (переменная FIREBASE_URL).</div>';
+    return;
+  }
+  try {
+    const res = await fetch(FIREBASE_URL + '/prices.json');
+    const data = await res.json();
+    if (data && data.fruits) {
+      fruits = data.fruits;
+      lastUpdated = data.updatedAt || null;
+    } else {
+      // базы ещё нет — создаём стартовые данные
+      fruits = defaultFruits;
+      lastUpdated = Date.now();
+      await fetch(FIREBASE_URL + '/prices.json', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fruits, updatedAt: lastUpdated })
+      });
+    }
+  } catch (e) {
+    console.error(e);
+    contentEl.innerHTML = '<div class="empty">Не удалось загрузить цены. Проверьте адрес базы данных и подключение к интернету.</div>';
+    return;
+  }
+  render();
+}
+
+async function saveFruits() {
+  setStatus('Сохранение...', '');
+  lastUpdated = Date.now();
+  try {
+    const res = await fetch(FIREBASE_URL + '/prices.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fruits, updatedAt: lastUpdated })
+    });
+    if (res.ok) {
+      setStatus('Сохранено ✓', 'success');
+      updatedSub.textContent = 'Обновлено: ' + fmtDate(lastUpdated);
+    } else {
+      setStatus('Ошибка сохранения', 'error');
+    }
+  } catch (e) {
+    console.error(e);
+    setStatus('Ошибка сохранения. Попробуйте ещё раз.', 'error');
+  }
+}
+
+function render() {
+  updatedSub.textContent = lastUpdated ? 'Обновлено: ' + fmtDate(lastUpdated) : '';
+
+  if (fruits.length === 0 && !isAdmin) {
+    contentEl.innerHTML = '<div class="empty">Пока нет фруктов в списке</div>';
+    return;
+  }
+
+  let html = '<table><thead><tr><th>Фрукт</th><th>Цена / кг</th><th>Кг в коробке</th><th>Цена / коробка</th>';
+  if (isAdmin) html += '<th></th>';
+  html += '</tr></thead><tbody>';
+
+  fruits.forEach((f, i) => {
+    if (isAdmin) {
+      html += `<tr>
+        <td><input class="cell-input" data-idx="${i}" data-field="name" value="${escapeHtml(f.name)}"></td>
+        <td><input class="cell-input" data-idx="${i}" data-field="kg" value="${escapeHtml(f.kg)}" inputmode="decimal"></td>
+        <td><input class="cell-input" data-idx="${i}" data-field="boxKg" value="${escapeHtml(f.boxKg || '')}" inputmode="decimal"></td>
+        <td><input class="cell-input" data-idx="${i}" data-field="box" value="${escapeHtml(f.box)}" inputmode="decimal"></td>
+        <td><button class="del-btn" data-idx="${i}" title="Удалить">✕</button></td>
+      </tr>`;
+    } else {
+      html += `<tr>
+        <td class="name-cell">${escapeHtml(f.name)}</td>
+        <td class="price">${escapeHtml(f.kg)} ₸</td>
+        <td>${escapeHtml(f.boxKg || '—')} кг</td>
+        <td class="price">${escapeHtml(f.box)} ₸</td>
+      </tr>`;
+    }
+  });
+
+  html += '</tbody></table>';
+  contentEl.innerHTML = html;
+
+  if (isAdmin) {
+    contentEl.querySelectorAll('.cell-input').forEach(inp => {
+      inp.addEventListener('input', (e) => {
+        const idx = +e.target.dataset.idx;
+        const field = e.target.dataset.field;
+        fruits[idx][field] = e.target.value;
+      });
+    });
+    contentEl.querySelectorAll('.del-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = +e.target.dataset.idx;
+        fruits.splice(idx, 1);
+        render();
+      });
+    });
+  }
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, m => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[m]));
+}
+
+adminToggleBtn.addEventListener('click', () => {
+  if (isAdmin) {
+    isAdmin = false;
+    adminToggleBtn.textContent = 'Вход для администратора';
+    adminToggleBtn.classList.remove('active');
+    adminToolbar.style.display = 'none';
+    setStatus('');
+    render();
+  } else {
+    const pass = prompt('Введите пароль администратора:');
+    if (pass === ADMIN_PASSWORD) {
+      isAdmin = true;
+      adminToggleBtn.textContent = 'Выйти из режима админа';
+      adminToggleBtn.classList.add('active');
+      adminToolbar.style.display = 'flex';
+      render();
+    } else if (pass !== null) {
+      alert('Неверный пароль');
+    }
+  }
+});
+
+document.getElementById('add-row-btn').addEventListener('click', () => {
+  fruits.push({ id: 'f' + Date.now(), name: 'Новый фрукт', kg: '0', boxKg: '0', box: '0' });
+  render();
+});
+
+document.getElementById('save-btn').addEventListener('click', saveFruits);
+
+loadFruits();
+</script>
+</body>
+</html>
